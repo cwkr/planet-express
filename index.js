@@ -3,24 +3,28 @@ const session = require('express-session');
 const bodyParser = require('body-parser');
 const nunjucks = require('nunjucks');
 const bcrypt = require('bcrypt');
+const pg = require('pg');
+const SessionStore = require('connect-pg-simple')(session);
 
 const port = process.env.PORT || 3000
 const app = express();
-
-const users = {
-    bob: '$2b$10$XkcjcNt.UlVFZqD4o3L57eTfWLIMuDZdjYp0gHkH0qQyRqF2yTq9u',
-    admin: '$2b$10$5B7.p/ocCP4Z9dnANf2/EOnejRr8KiKRKJfa5sHpCHaSRp0pChk/e'
-};
 
 nunjucks.configure('views', {
     autoescape: true,
     express: app
 });
 
+const pool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL
+});
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(session({
-    secret: "Your secret key",
+    store: new SessionStore({
+        pool: pool
+    }),
+    secret: process.env.COOKIE_SECRET,
     resave: false,
     saveUninitialized: true,
     cookie: { httpOnly: true }
@@ -45,20 +49,29 @@ app.get('/login', function (req, res) {
 });
 
 app.post('/login', function (req, res) {
-    bcrypt.compare(req.body.password, users[req.body.username] || '').then(
-        result => {
-            if (result === true) {
-                req.session.user = req.body.username;
-                res.redirect('/');
-            } else {
-                res.render('login.html', {msg: 'Wrong username or password!'});
-            }
-        },
-        err => {
+    pool.query("SELECT passwd FROM user_account WHERE username = $1", [req.body.username], (err, rs) => {
+        if (err) {
             console.log(err);
             res.sendStatus(500);
+        } else {
+            if (rs.rows.length == 1) {
+                bcrypt.compare(req.body.password, rs.rows[0].passwd).then(
+                    result => {
+                        if (result === true) {
+                            req.session.user = req.body.username;
+                            res.redirect('/');
+                        } else {
+                            res.render('login.html', {msg: 'Wrong username or password!'});
+                        }
+                    },
+                    err => {
+                        console.log(err);
+                        res.sendStatus(500);
+                    }
+                );
+            }
         }
-    );
+    });
 });
 
 app.post('/logout', function (req, res) {
