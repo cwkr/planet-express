@@ -51,10 +51,9 @@ app.get('/login', function (req, res) {
 app.post('/login', function (req, res) {
     pool.query("SELECT passwd FROM user_account WHERE username = $1", [req.body.username], (err, rs) => {
         if (err) {
-            console.log(err);
-            res.sendStatus(500);
+            res.render('login.html', {msg: err});
         } else {
-            if (rs.rows.length == 1) {
+            if (rs.rows.length === 1) {
                 bcrypt.compare(req.body.password, rs.rows[0].passwd).then(
                     result => {
                         if (result === true) {
@@ -65,10 +64,11 @@ app.post('/login', function (req, res) {
                         }
                     },
                     err => {
-                        console.log(err);
-                        res.sendStatus(500);
+                        res.render('login.html', {msg: err});
                     }
                 );
+            } else {
+                res.render('login.html', {msg: 'Wrong username or password!'});
             }
         }
     });
